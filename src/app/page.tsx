@@ -22,10 +22,10 @@ const ParticlePage = () => {
   }, []);
 
   return (
-    <main className="relative m-0 h-dvh w-full overflow-hidden bg-black">
+    <main className="particle-stage relative m-0 h-dvh w-full overflow-hidden">
       <canvas
-        aria-label="Interactive particle reconstruction of Guernica"
-        className="block h-full w-full bg-black"
+        aria-label="Interactive particle reconstruction of the Techint mark"
+        className="particle-stage block h-full w-full cursor-none touch-none"
         ref={canvasRef}
       />
       {unavailable ? (

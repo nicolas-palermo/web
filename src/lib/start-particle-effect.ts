@@ -14,8 +14,13 @@ import packShader from "../shaders/pack.wgsl";
 import particlesShader from "../shaders/particles.wgsl";
 import simulateShader from "../shaders/simulate.wgsl";
 import {
+  ATTRACT_HOLD_SECONDS,
+  ATTRACT_MIN_DISTANCE_PX,
+  ATTRACT_STATIONARY_PX,
+  COLOR_BLACK,
   DAMPING,
   DARK_LUMA_CUTOFF,
+  GLITCH_AMOUNT,
   LUMA_GAMMA,
   MAX_DOT_ALPHA,
   MAX_DOT_SIZE_PX,
@@ -59,8 +64,9 @@ const pointerFromEvent = (
   const height = Math.max(bounds.height, 1);
   const x = (event.clientX - bounds.left) / width;
   const y = (event.clientY - bounds.top) / height;
+  const inside = x >= 0 && x <= 1 && y >= 0 && y <= 1;
   return {
-    active: 1,
+    active: inside ? 1 : 0,
     ndcX: x * 2 - 1,
     ndcY: 1 - y * 2,
   };
@@ -91,6 +97,9 @@ export const startParticleEffect = (
     "(prefers-reduced-motion: reduce)"
   ).matches;
   const pointer: PointerState = { active: 0, ndcX: 0, ndcY: 0 };
+  let lastPointerNdcX = 0;
+  let lastPointerNdcY = 0;
+  let attractHoldSeconds = 0;
   const teardowns: (() => void)[] = [];
   const workgroups = Math.ceil(PARTICLE_COUNT / WORKGROUP_SIZE);
 
@@ -102,6 +111,7 @@ export const startParticleEffect = (
   };
   const deactivatePointer = (): void => {
     pointer.active = 0;
+    attractHoldSeconds = 0;
   };
   const syncPageHidden = (): void => {
     pageHidden = document.hidden;
@@ -190,8 +200,11 @@ export const startParticleEffect = (
         set: {
           particles: particleState,
           u: {
+            _pad: 0,
             damping: DAMPING,
             dt: 0,
+            glitch: GLITCH_AMOUNT,
+            min_approach: ATTRACT_MIN_DISTANCE_PX,
             mouse_active: 0,
             mouse_ndc: [0, 0],
             particle_count: PARTICLE_COUNT,
@@ -200,6 +213,7 @@ export const startParticleEffect = (
             repulsion_strength: REPULSION_STRENGTH,
             rest_scale: [1, 1],
             spring: SPRING_STRENGTH,
+            time: 0,
             viewport: [1, 1],
           },
         },
@@ -226,9 +240,11 @@ export const startParticleEffect = (
         set: {
           particles_tex: particleAtlas,
           u: {
-            _pad: [0, 0, 0],
             atlas_width: PARTICLE_ATLAS_WIDTH,
+            glitch: GLITCH_AMOUNT,
+            reduced_motion: reducedMotion ? 1 : 0,
             rest_scale: [1, 1],
+            time: 0,
             viewport: [
               Math.max(canvas.clientWidth, 1),
               Math.max(canvas.clientHeight, 1),
@@ -251,6 +267,8 @@ export const startParticleEffect = (
         });
         particlesDraw.set({
           u: {
+            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            reduced_motion: reducedMotion ? 1 : 0,
             rest_scale: scale,
             viewport: [cssWidth, cssHeight],
           },
@@ -266,16 +284,16 @@ export const startParticleEffect = (
         reducedMotion = event.matches;
       };
 
-      canvas.addEventListener("pointermove", applyPointer);
-      canvas.addEventListener("pointerdown", applyPointer);
-      canvas.addEventListener("pointerleave", deactivatePointer);
+      window.addEventListener("pointermove", applyPointer);
+      window.addEventListener("pointerdown", applyPointer);
+      window.addEventListener("pointerleave", deactivatePointer);
       document.addEventListener("visibilitychange", syncPageHidden);
       const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
       motionQuery.addEventListener("change", onMotion);
       teardowns.push(() => {
-        canvas.removeEventListener("pointermove", applyPointer);
-        canvas.removeEventListener("pointerdown", applyPointer);
-        canvas.removeEventListener("pointerleave", deactivatePointer);
+        window.removeEventListener("pointermove", applyPointer);
+        window.removeEventListener("pointerdown", applyPointer);
+        window.removeEventListener("pointerleave", deactivatePointer);
         document.removeEventListener("visibilitychange", syncPageHidden);
         motionQuery.removeEventListener("change", onMotion);
       });
@@ -296,19 +314,51 @@ export const startParticleEffect = (
           return;
         }
 
+        const dt = Math.min(time.deltaTime, MAX_DT_SECONDS);
+        let attractWeight = 0;
+        if (pointer.active > 0.5) {
+          const cssWidth = Math.max(canvas.clientWidth, 1);
+          const cssHeight = Math.max(canvas.clientHeight, 1);
+          const moveX = ((pointer.ndcX - lastPointerNdcX) * cssWidth) / 2;
+          const moveY = ((pointer.ndcY - lastPointerNdcY) * cssHeight) / 2;
+          const moved = Math.hypot(moveX, moveY) > ATTRACT_STATIONARY_PX;
+          attractHoldSeconds = moved ? 0 : attractHoldSeconds + dt;
+          lastPointerNdcX = pointer.ndcX;
+          lastPointerNdcY = pointer.ndcY;
+          const fadeT = Math.min(attractHoldSeconds / ATTRACT_HOLD_SECONDS, 1);
+          attractWeight = Math.max(0, 1 - fadeT * fadeT * (3 - 2 * fadeT));
+        } else {
+          attractHoldSeconds = 0;
+        }
+
         simulation.set({
           u: {
-            dt: Math.min(time.deltaTime, MAX_DT_SECONDS),
-            mouse_active: pointer.active,
+            dt,
+            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            mouse_active: attractWeight,
             mouse_ndc: [pointer.ndcX, pointer.ndcY],
             reduced_motion: reducedMotion ? 1 : 0,
+            time: time.time,
+          },
+        });
+        particlesDraw.set({
+          u: {
+            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            reduced_motion: reducedMotion ? 1 : 0,
+            time: time.time,
           },
         });
         simulation.dispatch(workgroups);
         packParticlesGpu.dispatch(workgroups);
-        frame.pass({ clear: [0, 0, 0, 1], target: canvasSurface }, (pass) => {
-          pass.draw(particlesDraw);
-        });
+        frame.pass(
+          {
+            clear: [COLOR_BLACK[0], COLOR_BLACK[1], COLOR_BLACK[2], 1],
+            target: canvasSurface,
+          },
+          (pass) => {
+            pass.draw(particlesDraw);
+          }
+        );
       });
 
       if (disposed) {

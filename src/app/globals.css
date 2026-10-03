@@ -2,12 +2,16 @@
 
 html,
 body {
-  background: #000;
-  color: #fff;
+  background: #292929;
+  color: #f0efed;
   min-height: 100dvh;
   margin: 0;
 }
 
+.particle-stage {
+  background: #292929;
+}
+
 .particle-fallback {
-  color: #a3a3a3;
+  color: #a8a7a5;
 }

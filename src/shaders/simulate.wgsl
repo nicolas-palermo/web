@@ -18,6 +18,10 @@ struct SimUniforms {
   damping: f32,
   reduced_motion: f32,
   particle_count: u32,
+  time: f32,
+  glitch: f32,
+  min_approach: f32,
+  _pad: f32,
 }
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -32,6 +36,28 @@ fn ndc_to_uv(ndc: vec2f, scale: vec2f) -> vec2f {
   return vec2f((ndc.x / safe.x) * 0.5 + 0.5, (1.0 - ndc.y / safe.y) * 0.5);
 }
 
+fn hash21(p: vec2f) -> f32 {
+  var p3 = fract(vec3f(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+fn band_shift(band: f32, tick: f32, tear_tick: f32) -> f32 {
+  let n = hash21(vec2f(band, tick));
+  let n2 = hash21(vec2f(band + 17.0, tear_tick));
+  let jitter = (n - 0.5) * 0.006;
+  let tear = select(0.0, (n2 - 0.5) * 0.022, n2 > 0.9);
+  return jitter + tear;
+}
+
+fn scanline_shift(uv: vec2f, time: f32, amount: f32, freeze: bool) -> f32 {
+  let band = floor(uv.y * 240.0);
+  if (freeze) {
+    return band_shift(band, 0.0, 3.0) * amount;
+  }
+  return band_shift(band, floor(time * 15.0), floor(time * 15.0)) * amount;
+}
+
 override WG: u32 = 64;
 
 @compute @workgroup_size(WG)
@@ -42,31 +68,34 @@ fn cs_main(@builtin(global_invocation_id) id: vec3u) {
   }
 
   var particle = particles[index];
-  if (u.reduced_motion > 0.5) {
-    particle.pos = particle.rest;
-    particle.vel = vec2f(0.0);
-    particles[index] = particle;
-    return;
-  }
-
+  let freeze = u.reduced_motion > 0.5;
   let dt = u.dt;
-  let rest_ndc = uv_to_ndc(particle.rest, u.rest_scale);
+  var rest_ndc = uv_to_ndc(particle.rest, u.rest_scale);
   var pos_ndc = uv_to_ndc(particle.pos, u.rest_scale);
+  let glitch_x = scanline_shift(particle.rest, u.time, u.glitch, freeze) * u.rest_scale.x;
+  rest_ndc.x += glitch_x;
+  pos_ndc.x += glitch_x;
   var vel = particle.vel;
-  var force = (rest_ndc - pos_ndc) * u.spring;
+  let attract = clamp(u.mouse_active, 0.0, 1.0);
+  let spring = mix(u.spring * 0.28, u.spring, attract);
+  var force = (rest_ndc - pos_ndc) * spring;
 
-  if (u.mouse_active > 0.5) {
+  if (u.mouse_active > 0.001) {
     let delta_ndc = pos_ndc - u.mouse_ndc;
     let delta_css = delta_ndc * u.viewport * 0.5;
-    let distance = length(delta_css);
-    if (distance < u.repulsion_radius && distance > 0.08) {
-      let falloff = 1.0 - distance / u.repulsion_radius;
-      force += normalize(delta_css) / max(u.viewport.y, 1.0) * 2.0 * u.repulsion_strength * falloff * falloff;
+    // Dashes are wide: count horizontal distance less so a bar is pulled as a unit.
+    let dist = length(vec2f(delta_css.x * 0.22, delta_css.y));
+    if (dist < u.repulsion_radius && dist > 0.4) {
+      let falloff = 1.0 - dist / u.repulsion_radius;
+      let dir = delta_ndc / max(length(delta_ndc), 1e-4);
+      let ring = clamp((dist - u.min_approach) / max(u.min_approach, 1.0), -1.0, 1.0);
+      force -= dir * u.repulsion_strength * falloff * falloff * u.mouse_active * ring;
     }
   }
 
   vel = (vel + force * dt) * exp(-u.damping * dt);
   pos_ndc += vel * dt;
+  pos_ndc.x -= glitch_x;
   particle.vel = vel;
   particle.pos = ndc_to_uv(pos_ndc, u.rest_scale);
   particles[index] = particle;

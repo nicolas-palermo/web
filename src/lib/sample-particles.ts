@@ -86,6 +86,8 @@ export const sampleParticlesFromLuma = (
   const prefix = new Float64Array(pixelCount);
   let totalWeight = 0;
 
+  const lumaValues = new Float32Array(pixelCount);
+  let lumaSum = 0;
   for (let index = 0; index < pixelCount; index += 1) {
     const offset = index * 4;
     const luma = rec709Luma(
@@ -94,6 +96,14 @@ export const sampleParticlesFromLuma = (
       data[offset + 2],
       data[offset + 3]
     );
+    lumaValues[index] = luma;
+    lumaSum += luma;
+  }
+  // Light-background marks (logos) invert so ink is dense, paper is empty.
+  const invertLuma = lumaSum / Math.max(pixelCount, 1) > 0.5;
+
+  for (let index = 0; index < pixelCount; index += 1) {
+    const luma = invertLuma ? 1 - lumaValues[index] : lumaValues[index];
     const weight = pixelWeight(luma, options.lumaGamma, options.darkCutoff);
     weights[index] = weight;
     totalWeight += weight;

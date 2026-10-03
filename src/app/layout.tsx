@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  description: "Grayscale particle reconstruction of Picasso's Guernica.",
-  title: "Guernica particles",
+  description: "Grayscale particle reconstruction of the Techint mark.",
+  title: "Techint particles",
 };
 
 interface RootLayoutProps {
@@ -14,7 +14,7 @@ interface RootLayoutProps {
 
 const RootLayout = ({ children }: RootLayoutProps) => (
   <html lang="en">
-    <body className="m-0 min-h-dvh overflow-hidden bg-black text-white">
+    <body className="particle-stage m-0 min-h-dvh overflow-hidden">
       {children}
     </body>
   </html>
