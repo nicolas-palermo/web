@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { startParticleEffect } from "../lib/start-particle-effect";
 
 const ParticlePage = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const disposeRef = useRef<(() => void) | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
+    disposeRef.current?.();
+    disposeRef.current = null;
     if (!canvas) {
       return;
     }
-
-    return startParticleEffect(canvas, {
+    disposeRef.current = startParticleEffect(canvas, {
       onUnavailable: () => {
         setUnavailable(true);
       },

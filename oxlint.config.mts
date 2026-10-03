@@ -23,5 +23,20 @@ export default defineConfig({
   ],
   ignorePatterns: core.ignorePatterns,
   jsPlugins: [...jsPlugins.jsPlugins, ...shadcn.jsPlugins],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            importNames: ["useEffect", "useLayoutEffect"],
+            message:
+              "Avoid useEffect/useLayoutEffect. Prefer event handlers, derived state during render, keys for remounts, or callback refs for DOM setup.",
+            name: "react",
+          },
+        ],
+      },
+    ],
+  },
   settings: jsPluginSettings,
 });
