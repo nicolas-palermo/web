@@ -1,6 +1,16 @@
-import { clock, compute, draw, frameLoop, init, storage, surface } from "vgpu";
+import {
+  clock,
+  compute,
+  draw,
+  frameLoop,
+  init,
+  storage,
+  surface,
+  texture,
+} from "vgpu";
 import type { FrameLoopHandle, Gpu } from "vgpu";
 
+import packShader from "../shaders/pack.wgsl";
 import particlesShader from "../shaders/particles.wgsl";
 import simulateShader from "../shaders/simulate.wgsl";
 import {
@@ -13,6 +23,7 @@ import {
   MAX_DT_SECONDS,
   MIN_DOT_ALPHA,
   MIN_DOT_SIZE_PX,
+  PARTICLE_ATLAS_WIDTH,
   PARTICLE_BYTES,
   PARTICLE_COUNT,
   PARTICLE_SEED,
@@ -101,11 +112,21 @@ export const startParticleEffect = (
       return;
     }
     disposed = true;
+    loop?.stop();
     for (const teardown of teardowns.toReversed()) {
       teardown();
     }
-    loop?.stop();
-    gpu?.dispose();
+    const activeGpu = gpu;
+    queueMicrotask(() => {
+      activeGpu?.dispose();
+    });
+  };
+
+  const fail = (): void => {
+    if (!disposed) {
+      options.onUnavailable();
+    }
+    dispose();
   };
 
   void (async () => {
@@ -113,12 +134,9 @@ export const startParticleEffect = (
     try {
       nextGpu = await init({
         powerPreference: "high-performance",
-        requiredLimits: { maxStorageBuffersInVertexStage: 1 },
       });
     } catch {
-      if (!disposed) {
-        options.onUnavailable();
-      }
+      fail();
       return;
     }
 
@@ -128,152 +146,177 @@ export const startParticleEffect = (
       return;
     }
 
-    const image = await loadSourceImage(SOURCE_IMAGE_URL);
-    if (disposed) {
-      return;
-    }
-
-    const luma = imageDataFromBitmap(
-      image,
-      image.naturalWidth,
-      image.naturalHeight
-    );
-    const sampled = sampleParticlesFromLuma(luma, {
-      count: PARTICLE_COUNT,
-      darkCutoff: DARK_LUMA_CUTOFF,
-      lumaGamma: LUMA_GAMMA,
-      maxAlpha: MAX_DOT_ALPHA,
-      maxSize: MAX_DOT_SIZE_PX,
-      minAlpha: MIN_DOT_ALPHA,
-      minSize: MIN_DOT_SIZE_PX,
-      seed: PARTICLE_SEED,
-    });
-    const packed = packParticles(sampled);
-    const imageAspect = luma.width / luma.height;
-
-    const canvasSurface = surface(gpu, canvas, { dpr: [1, MAX_DPR] });
-    teardowns.push(() => {
-      canvasSurface.dispose();
-    });
-
-    const particleState = storage(gpu, PARTICLE_COUNT * PARTICLE_BYTES);
-    particleState.write(packed);
-
-    const simulation = compute(gpu, simulateShader, {
-      constants: { WG: WORKGROUP_SIZE },
-      label: "particle-sim",
-      set: {
-        particles: particleState,
-        u: {
-          damping: DAMPING,
-          dt: 0,
-          mouse_active: 0,
-          mouse_ndc: [0, 0],
-          particle_count: PARTICLE_COUNT,
-          reduced_motion: reducedMotion ? 1 : 0,
-          repulsion_radius: REPULSION_RADIUS_CSS_PX,
-          repulsion_strength: REPULSION_STRENGTH,
-          rest_scale: [1, 1],
-          spring: SPRING_STRENGTH,
-          viewport: [1, 1],
-        },
-      },
-    });
-
-    const particlesDraw = draw(gpu, {
-      blend: "alpha",
-      depth: false,
-      instances: PARTICLE_COUNT,
-      label: "particle-draw",
-      set: {
-        particles: particleState,
-        u: {
-          rest_scale: [1, 1],
-          viewport: [canvasSurface.size[0], canvasSurface.size[1]],
-        },
-      },
-      shader: particlesShader,
-      vertices: 6,
-    });
-
-    await particlesDraw.compile(canvasSurface);
-    if (disposed) {
-      return;
-    }
-
-    const syncFit = (): void => {
-      const cssWidth = Math.max(canvas.clientWidth, 1);
-      const cssHeight = Math.max(canvas.clientHeight, 1);
-      const scale = containScale(imageAspect, cssWidth, cssHeight);
-      simulation.set({
-        u: {
-          rest_scale: scale,
-          viewport: [cssWidth, cssHeight],
-        },
-      });
-      particlesDraw.set({
-        u: {
-          rest_scale: scale,
-          viewport: [canvasSurface.size[0], canvasSurface.size[1]],
-        },
-      });
-    };
-
-    const unsubscribeResize = canvasSurface.onResize(() => {
-      syncFit();
-    });
-    teardowns.push(unsubscribeResize);
-
-    const onMotion = (event: MediaQueryListEvent): void => {
-      reducedMotion = event.matches;
-    };
-
-    canvas.addEventListener("pointermove", applyPointer);
-    canvas.addEventListener("pointerdown", applyPointer);
-    canvas.addEventListener("pointerleave", deactivatePointer);
-    document.addEventListener("visibilitychange", syncPageHidden);
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    motionQuery.addEventListener("change", onMotion);
-    teardowns.push(() => {
-      canvas.removeEventListener("pointermove", applyPointer);
-      canvas.removeEventListener("pointerdown", applyPointer);
-      canvas.removeEventListener("pointerleave", deactivatePointer);
-      document.removeEventListener("visibilitychange", syncPageHidden);
-      motionQuery.removeEventListener("change", onMotion);
-    });
-
-    const intersection = new IntersectionObserver((entries) => {
-      visible = (entries[0]?.intersectionRatio ?? 0) > 0;
-    });
-    intersection.observe(canvas);
-    teardowns.push(() => {
-      intersection.disconnect();
-    });
-
-    const time = clock(gpu);
-    loop = frameLoop(gpu, (frame) => {
-      if (pageHidden || !visible) {
-        time.advance(0);
+    try {
+      const image = await loadSourceImage(SOURCE_IMAGE_URL);
+      if (disposed) {
         return;
       }
 
-      simulation.set({
-        u: {
-          dt: Math.min(time.deltaTime, MAX_DT_SECONDS),
-          mouse_active: pointer.active,
-          mouse_ndc: [pointer.ndcX, pointer.ndcY],
-          reduced_motion: reducedMotion ? 1 : 0,
+      const luma = imageDataFromBitmap(
+        image,
+        image.naturalWidth,
+        image.naturalHeight
+      );
+      const sampled = sampleParticlesFromLuma(luma, {
+        count: PARTICLE_COUNT,
+        darkCutoff: DARK_LUMA_CUTOFF,
+        lumaGamma: LUMA_GAMMA,
+        maxAlpha: MAX_DOT_ALPHA,
+        maxSize: MAX_DOT_SIZE_PX,
+        minAlpha: MIN_DOT_ALPHA,
+        minSize: MIN_DOT_SIZE_PX,
+        seed: PARTICLE_SEED,
+      });
+      const packed = packParticles(sampled);
+      const imageAspect = luma.width / luma.height;
+      const canvasSurface = surface(gpu, canvas, { dpr: [1, MAX_DPR] });
+      teardowns.push(() => {
+        canvasSurface.dispose();
+      });
+
+      const particleState = storage(gpu, PARTICLE_COUNT * PARTICLE_BYTES);
+      particleState.write(packed);
+      const atlasHeight = Math.ceil(PARTICLE_COUNT / PARTICLE_ATLAS_WIDTH);
+      const particleAtlas = texture(gpu, {
+        format: "rgba32float",
+        kind: "2d",
+        size: [PARTICLE_ATLAS_WIDTH, atlasHeight],
+        usage: ["copy_dst", "storage_binding", "texture_binding"],
+      });
+
+      const simulation = compute(gpu, simulateShader, {
+        constants: { WG: WORKGROUP_SIZE },
+        label: "particle-sim",
+        set: {
+          particles: particleState,
+          u: {
+            damping: DAMPING,
+            dt: 0,
+            mouse_active: 0,
+            mouse_ndc: [0, 0],
+            particle_count: PARTICLE_COUNT,
+            reduced_motion: reducedMotion ? 1 : 0,
+            repulsion_radius: REPULSION_RADIUS_CSS_PX,
+            repulsion_strength: REPULSION_STRENGTH,
+            rest_scale: [1, 1],
+            spring: SPRING_STRENGTH,
+            viewport: [1, 1],
+          },
         },
       });
-      simulation.dispatch(workgroups);
-      frame.pass({ clear: [0, 0, 0, 1], target: canvasSurface }, (pass) => {
-        pass.draw(particlesDraw);
-      });
-    });
 
-    if (disposed) {
-      loop.stop();
-      gpu.dispose();
+      const packParticlesGpu = compute(gpu, packShader, {
+        constants: { WG: WORKGROUP_SIZE },
+        label: "particle-pack",
+        set: {
+          draw_tex: particleAtlas,
+          particles: particleState,
+          u: {
+            atlas_width: PARTICLE_ATLAS_WIDTH,
+            particle_count: PARTICLE_COUNT,
+          },
+        },
+      });
+
+      const particlesDraw = draw(gpu, {
+        blend: "alpha",
+        depth: false,
+        instances: PARTICLE_COUNT,
+        label: "particle-draw",
+        set: {
+          particles_tex: particleAtlas,
+          u: {
+            _pad: [0, 0, 0],
+            atlas_width: PARTICLE_ATLAS_WIDTH,
+            rest_scale: [1, 1],
+            viewport: [
+              Math.max(canvas.clientWidth, 1),
+              Math.max(canvas.clientHeight, 1),
+            ],
+          },
+        },
+        shader: particlesShader,
+        vertices: 6,
+      });
+
+      const syncFit = (): void => {
+        const cssWidth = Math.max(canvas.clientWidth, 1);
+        const cssHeight = Math.max(canvas.clientHeight, 1);
+        const scale = containScale(imageAspect, cssWidth, cssHeight);
+        simulation.set({
+          u: {
+            rest_scale: scale,
+            viewport: [cssWidth, cssHeight],
+          },
+        });
+        particlesDraw.set({
+          u: {
+            rest_scale: scale,
+            viewport: [cssWidth, cssHeight],
+          },
+        });
+      };
+
+      const unsubscribeResize = canvasSurface.onResize(() => {
+        syncFit();
+      });
+      teardowns.push(unsubscribeResize);
+
+      const onMotion = (event: MediaQueryListEvent): void => {
+        reducedMotion = event.matches;
+      };
+
+      canvas.addEventListener("pointermove", applyPointer);
+      canvas.addEventListener("pointerdown", applyPointer);
+      canvas.addEventListener("pointerleave", deactivatePointer);
+      document.addEventListener("visibilitychange", syncPageHidden);
+      const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      motionQuery.addEventListener("change", onMotion);
+      teardowns.push(() => {
+        canvas.removeEventListener("pointermove", applyPointer);
+        canvas.removeEventListener("pointerdown", applyPointer);
+        canvas.removeEventListener("pointerleave", deactivatePointer);
+        document.removeEventListener("visibilitychange", syncPageHidden);
+        motionQuery.removeEventListener("change", onMotion);
+      });
+
+      const intersection = new IntersectionObserver((entries) => {
+        visible = (entries[0]?.intersectionRatio ?? 0) > 0;
+      });
+      intersection.observe(canvas);
+      teardowns.push(() => {
+        intersection.disconnect();
+      });
+
+      const time = clock(gpu);
+      packParticlesGpu.dispatch(workgroups);
+      loop = frameLoop(gpu, (frame) => {
+        if (pageHidden || !visible) {
+          time.advance(0);
+          return;
+        }
+
+        simulation.set({
+          u: {
+            dt: Math.min(time.deltaTime, MAX_DT_SECONDS),
+            mouse_active: pointer.active,
+            mouse_ndc: [pointer.ndcX, pointer.ndcY],
+            reduced_motion: reducedMotion ? 1 : 0,
+          },
+        });
+        simulation.dispatch(workgroups);
+        packParticlesGpu.dispatch(workgroups);
+        frame.pass({ clear: [0, 0, 0, 1], target: canvasSurface }, (pass) => {
+          pass.draw(particlesDraw);
+        });
+      });
+
+      if (disposed) {
+        loop.stop();
+        gpu.dispose();
+      }
+    } catch {
+      fail();
     }
   })();
 
