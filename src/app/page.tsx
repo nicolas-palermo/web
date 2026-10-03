@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { startParticleEffect } from "../lib/start-particle-effect";
 
@@ -8,7 +8,7 @@ const ParticlePage = () => {
   const disposeRef = useRef<(() => void) | null>(null);
   const [unavailable, setUnavailable] = useState(false);
 
-  const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
+  const canvasRef = (canvas: HTMLCanvasElement | null) => {
     disposeRef.current?.();
     disposeRef.current = null;
     if (!canvas) {
@@ -19,7 +19,7 @@ const ParticlePage = () => {
         setUnavailable(true);
       },
     });
-  }, []);
+  };
 
   return (
     <main className="particle-stage relative m-0 h-dvh w-full overflow-hidden">
