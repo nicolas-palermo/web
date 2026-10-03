@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+html,
+body {
+  background: #292929;
+  color: #f0efed;
+  min-height: 100dvh;
+  margin: 0;
+}
+
+.particle-stage {
+  background: #292929;
+}
+
+.particle-fallback {
+  color: #a8a7a5;
+}

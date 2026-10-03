@@ -1,0 +1,25 @@
+export const PARTICLE_COUNT = 20_000;
+export const PARTICLE_SEED = 0x67_e4_71_ca;
+export const SOURCE_IMAGE_URL = "/techint-glitch.png";
+export const GLITCH_AMOUNT = 1;
+export const WORKGROUP_SIZE = 64;
+export const PARTICLE_ATLAS_WIDTH = 256;
+export const FLOATS_PER_PARTICLE = 8;
+export const PARTICLE_BYTES = FLOATS_PER_PARTICLE * 4;
+export const MAX_DT_SECONDS = 1 / 30;
+export const SPRING_STRENGTH = 36;
+export const DAMPING = 8.2;
+export const REPULSION_RADIUS_CSS_PX = 68;
+export const ATTRACT_MIN_DISTANCE_PX = 6;
+export const REPULSION_STRENGTH = 22;
+export const ATTRACT_HOLD_SECONDS = 0.35;
+export const ATTRACT_STATIONARY_PX = 10;
+export const MIN_DOT_SIZE_PX = 1.2;
+export const MAX_DOT_SIZE_PX = 1.7;
+export const MIN_DOT_ALPHA = 0.28;
+export const MAX_DOT_ALPHA = 0.92;
+export const LUMA_GAMMA = 1.65;
+export const DARK_LUMA_CUTOFF = 0.035;
+export const MAX_DPR = 2;
+/** Canvas / page background */
+export const COLOR_BLACK = [41 / 255, 41 / 255, 41 / 255] as const;
