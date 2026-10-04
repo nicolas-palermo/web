@@ -83,7 +83,6 @@ fn cs_main(@builtin(global_invocation_id) id: vec3u) {
   if (u.mouse_active > 0.001) {
     let delta_ndc = pos_ndc - u.mouse_ndc;
     let delta_css = delta_ndc * u.viewport * 0.5;
-    // Dashes are wide: count horizontal distance less so a bar is pulled as a unit.
     let dist = length(vec2f(delta_css.x * 0.22, delta_css.y));
     if (dist < u.repulsion_radius && dist > 0.4) {
       let falloff = 1.0 - dist / u.repulsion_radius;

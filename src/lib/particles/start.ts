@@ -10,40 +10,17 @@ import {
 } from "vgpu";
 import type { FrameLoopHandle, Gpu } from "vgpu";
 
-import packShader from "../shaders/pack.wgsl";
-import particlesShader from "../shaders/particles.wgsl";
-import simulateShader from "../shaders/simulate.wgsl";
-import {
-  ATTRACT_HOLD_SECONDS,
-  ATTRACT_MIN_DISTANCE_PX,
-  ATTRACT_STATIONARY_PX,
-  COLOR_BLACK,
-  DAMPING,
-  DARK_LUMA_CUTOFF,
-  GLITCH_AMOUNT,
-  LUMA_GAMMA,
-  MAX_DOT_ALPHA,
-  MAX_DOT_SIZE_PX,
-  MAX_DPR,
-  MAX_DT_SECONDS,
-  MIN_DOT_ALPHA,
-  MIN_DOT_SIZE_PX,
-  PARTICLE_ATLAS_WIDTH,
-  PARTICLE_BYTES,
-  PARTICLE_COUNT,
-  PARTICLE_SEED,
-  REPULSION_RADIUS_CSS_PX,
-  REPULSION_STRENGTH,
-  SOURCE_IMAGE_URL,
-  SPRING_STRENGTH,
-  WORKGROUP_SIZE,
-} from "./particle-constants";
 import {
   imageDataFromBitmap,
   loadSourceImage,
   packParticles,
   sampleParticlesFromLuma,
-} from "./sample-particles";
+} from "./sample";
+import { particleBytes, particleSettings } from "./settings";
+import packShader from "./shaders/pack.wgsl";
+import particlesShader from "./shaders/particles.wgsl";
+import simulateShader from "./shaders/simulate.wgsl";
+import { readThemeBackgroundClear } from "./theme-color";
 
 interface ParticleEffectOptions {
   onUnavailable: () => void;
@@ -101,7 +78,10 @@ export const startParticleEffect = (
   let lastPointerNdcY = 0;
   let attractHoldSeconds = 0;
   const teardowns: (() => void)[] = [];
-  const workgroups = Math.ceil(PARTICLE_COUNT / WORKGROUP_SIZE);
+  const workgroups = Math.ceil(
+    particleSettings.count / particleSettings.workgroupSize
+  );
+  const clearColor = readThemeBackgroundClear();
 
   const applyPointer = (event: PointerEvent): void => {
     const next = pointerFromEvent(canvas, event);
@@ -157,7 +137,7 @@ export const startParticleEffect = (
     }
 
     try {
-      const image = await loadSourceImage(SOURCE_IMAGE_URL);
+      const image = await loadSourceImage(particleSettings.sourceImageUrl);
       if (disposed) {
         return;
       }
@@ -168,51 +148,58 @@ export const startParticleEffect = (
         image.naturalHeight
       );
       const sampled = sampleParticlesFromLuma(luma, {
-        count: PARTICLE_COUNT,
-        darkCutoff: DARK_LUMA_CUTOFF,
-        lumaGamma: LUMA_GAMMA,
-        maxAlpha: MAX_DOT_ALPHA,
-        maxSize: MAX_DOT_SIZE_PX,
-        minAlpha: MIN_DOT_ALPHA,
-        minSize: MIN_DOT_SIZE_PX,
-        seed: PARTICLE_SEED,
+        count: particleSettings.count,
+        darkCutoff: particleSettings.darkLumaCutoff,
+        lumaGamma: particleSettings.lumaGamma,
+        maxAlpha: particleSettings.maxDotAlpha,
+        maxSize: particleSettings.maxDotSizePx,
+        minAlpha: particleSettings.minDotAlpha,
+        minSize: particleSettings.minDotSizePx,
+        seed: particleSettings.seed,
       });
       const packed = packParticles(sampled);
       const imageAspect = luma.width / luma.height;
-      const canvasSurface = surface(gpu, canvas, { dpr: [1, MAX_DPR] });
+      const canvasSurface = surface(gpu, canvas, {
+        dpr: [1, particleSettings.maxDpr],
+      });
       teardowns.push(() => {
         canvasSurface.dispose();
       });
 
-      const particleState = storage(gpu, PARTICLE_COUNT * PARTICLE_BYTES);
+      const particleState = storage(
+        gpu,
+        particleSettings.count * particleBytes
+      );
       particleState.write(packed);
-      const atlasHeight = Math.ceil(PARTICLE_COUNT / PARTICLE_ATLAS_WIDTH);
+      const atlasHeight = Math.ceil(
+        particleSettings.count / particleSettings.atlasWidth
+      );
       const particleAtlas = texture(gpu, {
         format: "rgba32float",
         kind: "2d",
-        size: [PARTICLE_ATLAS_WIDTH, atlasHeight],
+        size: [particleSettings.atlasWidth, atlasHeight],
         usage: ["copy_dst", "storage_binding", "texture_binding"],
       });
 
       const simulation = compute(gpu, simulateShader, {
-        constants: { WG: WORKGROUP_SIZE },
+        constants: { WG: particleSettings.workgroupSize },
         label: "particle-sim",
         set: {
           particles: particleState,
           u: {
             _pad: 0,
-            damping: DAMPING,
+            damping: particleSettings.damping,
             dt: 0,
-            glitch: GLITCH_AMOUNT,
-            min_approach: ATTRACT_MIN_DISTANCE_PX,
+            glitch: particleSettings.glitchAmount,
+            min_approach: particleSettings.attractMinDistancePx,
             mouse_active: 0,
             mouse_ndc: [0, 0],
-            particle_count: PARTICLE_COUNT,
+            particle_count: particleSettings.count,
             reduced_motion: reducedMotion ? 1 : 0,
-            repulsion_radius: REPULSION_RADIUS_CSS_PX,
-            repulsion_strength: REPULSION_STRENGTH,
+            repulsion_radius: particleSettings.repulsionRadiusCssPx,
+            repulsion_strength: particleSettings.repulsionStrength,
             rest_scale: [1, 1],
-            spring: SPRING_STRENGTH,
+            spring: particleSettings.springStrength,
             time: 0,
             viewport: [1, 1],
           },
@@ -220,14 +207,14 @@ export const startParticleEffect = (
       });
 
       const packParticlesGpu = compute(gpu, packShader, {
-        constants: { WG: WORKGROUP_SIZE },
+        constants: { WG: particleSettings.workgroupSize },
         label: "particle-pack",
         set: {
           draw_tex: particleAtlas,
           particles: particleState,
           u: {
-            atlas_width: PARTICLE_ATLAS_WIDTH,
-            particle_count: PARTICLE_COUNT,
+            atlas_width: particleSettings.atlasWidth,
+            particle_count: particleSettings.count,
           },
         },
       });
@@ -235,13 +222,13 @@ export const startParticleEffect = (
       const particlesDraw = draw(gpu, {
         blend: "alpha",
         depth: false,
-        instances: PARTICLE_COUNT,
+        instances: particleSettings.count,
         label: "particle-draw",
         set: {
           particles_tex: particleAtlas,
           u: {
-            atlas_width: PARTICLE_ATLAS_WIDTH,
-            glitch: GLITCH_AMOUNT,
+            atlas_width: particleSettings.atlasWidth,
+            glitch: particleSettings.glitchAmount,
             reduced_motion: reducedMotion ? 1 : 0,
             rest_scale: [1, 1],
             time: 0,
@@ -267,7 +254,7 @@ export const startParticleEffect = (
         });
         particlesDraw.set({
           u: {
-            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            glitch: reducedMotion ? 0 : particleSettings.glitchAmount,
             reduced_motion: reducedMotion ? 1 : 0,
             rest_scale: scale,
             viewport: [cssWidth, cssHeight],
@@ -314,18 +301,22 @@ export const startParticleEffect = (
           return;
         }
 
-        const dt = Math.min(time.deltaTime, MAX_DT_SECONDS);
+        const dt = Math.min(time.deltaTime, particleSettings.maxDtSeconds);
         let attractWeight = 0;
         if (pointer.active > 0.5) {
           const cssWidth = Math.max(canvas.clientWidth, 1);
           const cssHeight = Math.max(canvas.clientHeight, 1);
           const moveX = ((pointer.ndcX - lastPointerNdcX) * cssWidth) / 2;
           const moveY = ((pointer.ndcY - lastPointerNdcY) * cssHeight) / 2;
-          const moved = Math.hypot(moveX, moveY) > ATTRACT_STATIONARY_PX;
+          const moved =
+            Math.hypot(moveX, moveY) > particleSettings.attractStationaryPx;
           attractHoldSeconds = moved ? 0 : attractHoldSeconds + dt;
           lastPointerNdcX = pointer.ndcX;
           lastPointerNdcY = pointer.ndcY;
-          const fadeT = Math.min(attractHoldSeconds / ATTRACT_HOLD_SECONDS, 1);
+          const fadeT = Math.min(
+            attractHoldSeconds / particleSettings.attractHoldSeconds,
+            1
+          );
           attractWeight = Math.max(0, 1 - fadeT * fadeT * (3 - 2 * fadeT));
         } else {
           attractHoldSeconds = 0;
@@ -334,7 +325,7 @@ export const startParticleEffect = (
         simulation.set({
           u: {
             dt,
-            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            glitch: reducedMotion ? 0 : particleSettings.glitchAmount,
             mouse_active: attractWeight,
             mouse_ndc: [pointer.ndcX, pointer.ndcY],
             reduced_motion: reducedMotion ? 1 : 0,
@@ -343,7 +334,7 @@ export const startParticleEffect = (
         });
         particlesDraw.set({
           u: {
-            glitch: reducedMotion ? 0 : GLITCH_AMOUNT,
+            glitch: reducedMotion ? 0 : particleSettings.glitchAmount,
             reduced_motion: reducedMotion ? 1 : 0,
             time: time.time,
           },
@@ -352,7 +343,7 @@ export const startParticleEffect = (
         packParticlesGpu.dispatch(workgroups);
         frame.pass(
           {
-            clear: [COLOR_BLACK[0], COLOR_BLACK[1], COLOR_BLACK[2], 1],
+            clear: clearColor,
             target: canvasSurface,
           },
           (pass) => {
