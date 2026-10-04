@@ -99,7 +99,6 @@ export const sampleParticlesFromLuma = (
     lumaValues[index] = luma;
     lumaSum += luma;
   }
-  // Light-background marks (logos) invert so ink is dense, paper is empty.
   const invertLuma = lumaSum / Math.max(pixelCount, 1) > 0.5;
 
   for (let index = 0; index < pixelCount; index += 1) {

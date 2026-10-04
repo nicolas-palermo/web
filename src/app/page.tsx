@@ -1,41 +1,36 @@
-"use client";
+import { TechintParticles } from "../components/techint-particles";
 
-import { useRef, useState } from "react";
-
-import { startParticleEffect } from "../lib/start-particle-effect";
-
-const ParticlePage = () => {
-  const disposeRef = useRef<(() => void) | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
-
-  const canvasRef = (canvas: HTMLCanvasElement | null) => {
-    disposeRef.current?.();
-    disposeRef.current = null;
-    if (!canvas) {
-      return;
-    }
-    disposeRef.current = startParticleEffect(canvas, {
-      onUnavailable: () => {
-        setUnavailable(true);
-      },
-    });
-  };
-
-  return (
-    <main className="particle-stage relative m-0 h-dvh w-full overflow-hidden">
-      <canvas
-        aria-label="Interactive particle reconstruction of the Techint mark"
-        className="particle-stage block h-full w-full cursor-none touch-none"
-        ref={canvasRef}
-      />
-      {unavailable ? (
-        <p className="particle-fallback absolute inset-0 flex items-center justify-center p-6 text-center text-sm">
-          WebGPU is not available in this browser, so the particle canvas cannot
-          run.
+const HomePage = () => (
+  <main className="bg-background text-foreground">
+    <section className="flex min-h-dvh flex-col justify-end px-6 pt-24 pb-16 sm:px-10 sm:pb-20 lg:px-16">
+      <div className="mx-auto w-full max-w-3xl">
+        <h1 className="font-display text-foreground text-5xl leading-none tracking-tight sm:text-6xl lg:text-7xl">
+          Nicolas Palermo
+        </h1>
+        <p className="text-foreground/70 mt-6 max-w-xl text-base leading-relaxed sm:text-lg">
+          ML engineer turned product engineer. Building at Plaude. Previously at
+          Techint.
         </p>
-      ) : null}
-    </main>
-  );
-};
+      </div>
+    </section>
 
-export default ParticlePage;
+    <section
+      aria-labelledby="companies-heading"
+      className="border-foreground/10 border-t px-6 py-16 sm:px-10 sm:py-20 lg:px-16"
+    >
+      <div className="mx-auto w-full max-w-5xl">
+        <h2
+          className="font-display text-foreground/45 text-sm tracking-widest uppercase"
+          id="companies-heading"
+        >
+          Companies
+        </h2>
+        <div className="companies-stage mt-10 w-full overflow-hidden">
+          <TechintParticles />
+        </div>
+      </div>
+    </section>
+  </main>
+);
+
+export default HomePage;

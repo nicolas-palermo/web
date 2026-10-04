@@ -1,11 +1,24 @@
 import type { Metadata } from "next";
+import { Instrument_Serif, Manrope } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
 
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-manrope",
+});
+
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  variable: "--font-instrument-serif",
+  weight: "400",
+});
+
 export const metadata: Metadata = {
-  description: "Grayscale particle reconstruction of the Techint mark.",
-  title: "Techint particles",
+  description:
+    "Nicolas Palermo — ML engineer turned product engineer at Plaude.",
+  title: "Nicolas Palermo",
 };
 
 interface RootLayoutProps {
@@ -13,8 +26,8 @@ interface RootLayoutProps {
 }
 
 const RootLayout = ({ children }: RootLayoutProps) => (
-  <html lang="en">
-    <body className="particle-stage m-0 min-h-dvh overflow-hidden">
+  <html className={`${manrope.variable} ${instrumentSerif.variable}`} lang="en">
+    <body className="bg-background text-foreground m-0 min-h-dvh font-sans antialiased">
       {children}
     </body>
   </html>

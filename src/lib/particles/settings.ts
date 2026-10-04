@@ -1,0 +1,26 @@
+export const particleSettings = {
+  atlasWidth: 256,
+  attractHoldSeconds: 0.35,
+  attractMinDistancePx: 6,
+  attractStationaryPx: 10,
+  count: 20_000,
+  damping: 8.2,
+  darkLumaCutoff: 0.035,
+  floatsPerParticle: 8,
+  glitchAmount: 1,
+  lumaGamma: 1.65,
+  maxDotAlpha: 0.92,
+  maxDotSizePx: 1.7,
+  maxDpr: 2,
+  maxDtSeconds: 1 / 30,
+  minDotAlpha: 0.28,
+  minDotSizePx: 1.2,
+  repulsionRadiusCssPx: 68,
+  repulsionStrength: 22,
+  seed: 0x67_e4_71_ca,
+  sourceImageUrl: "/techint-glitch.png",
+  springStrength: 36,
+  workgroupSize: 64,
+} as const;
+
+export const particleBytes = particleSettings.floatsPerParticle * 4;

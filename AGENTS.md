@@ -70,6 +70,12 @@ Write code that is **accessible, performant, type-safe, and maintainable**. Focu
 - Prefer simple conditionals over nested ternary operators
 - Group related code together and separate concerns
 
+### Comments
+
+- Do not add comments in code (TypeScript, JavaScript, CSS, WGSL, or config)
+- Prefer clear names and structure over explanatory comments
+- Do not leave commented-out code
+
 ### Security
 
 - Add `rel="noopener"` when using `target="_blank"` on links
@@ -119,7 +125,7 @@ Oxlint + Oxfmt will catch most mechanical issues automatically. Focus your atten
 3. **Architecture decisions** - Component structure, data flow, and API design
 4. **Edge cases** - Handle boundary conditions and error states
 5. **User experience** - Accessibility, performance, and usability considerations
-6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
+6. **Documentation** - Prefer self-documenting code; do not add comments in source files
 
 ---
 
