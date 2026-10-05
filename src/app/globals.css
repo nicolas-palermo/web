@@ -3,6 +3,9 @@
 @theme {
   --color-background: #292929;
   --color-foreground: #f0efed;
+  --font-sans: var(--font-manrope), ui-sans-serif, sans-serif;
+  --font-display: var(--font-instrument-serif), ui-serif, serif;
+  --tracking-widest: 0.2em;
 }
 
 html,
@@ -13,10 +16,6 @@ body {
   margin: 0;
 }
 
-.particle-stage {
-  background: var(--color-background);
-}
-
-.particle-fallback {
-  color: #a8a7a5;
+.companies-stage {
+  height: min(70dvh, 36rem);
 }
