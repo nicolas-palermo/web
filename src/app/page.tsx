@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-import { startParticleEffect } from "../lib/start-particle-effect";
+import { startParticleEffect } from "../lib/particles";
 
 const ParticlePage = () => {
   const disposeRef = useRef<(() => void) | null>(null);

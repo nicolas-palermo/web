@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  // A WebGPU device cannot survive React's double-mount in development.
   reactStrictMode: false,
   turbopack: {
     rules: {

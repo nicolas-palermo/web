@@ -14,7 +14,7 @@ interface RootLayoutProps {
 
 const RootLayout = ({ children }: RootLayoutProps) => (
   <html lang="en">
-    <body className="particle-stage m-0 min-h-dvh overflow-hidden">
+    <body className="bg-background text-foreground particle-stage m-0 min-h-dvh overflow-hidden">
       {children}
     </body>
   </html>
