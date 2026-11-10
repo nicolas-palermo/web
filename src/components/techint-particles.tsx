@@ -22,18 +22,19 @@ export const TechintParticles = () => {
   };
 
   return (
-    <div className="relative h-full w-full">
-      <canvas
-        aria-label="Interactive particle reconstruction of the Techint mark"
-        className="block h-full w-full cursor-none touch-none"
-        ref={canvasRef}
-      />
+    <div className="h-full w-full">
       {unavailable ? (
-        <p className="text-foreground/55 absolute inset-0 flex items-center justify-center p-6 text-center text-sm">
+        <p className="text-foreground/55 flex h-full items-center justify-center p-6 text-center text-sm">
           WebGPU is not available in this browser, so the particle canvas cannot
           run.
         </p>
-      ) : null}
+      ) : (
+        <canvas
+          aria-label="Interactive particle reconstruction of the Techint mark"
+          className="block h-full w-full cursor-none touch-none"
+          ref={canvasRef}
+        />
+      )}
     </div>
   );
 };
