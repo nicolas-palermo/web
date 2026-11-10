@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState } from "react";
 
 import { startParticleEffect } from "../lib/particles";
+import { particleSettings } from "../lib/particles/settings";
 
 export const TechintParticles = () => {
   const disposeRef = useRef<(() => void) | null>(null);
@@ -22,12 +24,15 @@ export const TechintParticles = () => {
   };
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
       {unavailable ? (
-        <p className="text-foreground/55 flex h-full items-center justify-center p-6 text-center text-sm">
-          WebGPU is not available in this browser, so the particle canvas cannot
-          run.
-        </p>
+        <Image
+          alt="Techint"
+          className="object-contain mix-blend-lighten"
+          fill
+          sizes="(min-width: 64rem) 64rem, 100vw"
+          src={particleSettings.sourceImageUrl}
+        />
       ) : (
         <canvas
           aria-label="Interactive particle reconstruction of the Techint mark"
